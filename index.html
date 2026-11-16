@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>いつも買うものリスト</title>
+<style>
+  :root { --bg:#f7f5f0; --card:#fff; --ink:#22252a; --sub:#6b7280; --line:#e5e1d8; --accent:#2563eb; --good:#15803d; --bad:#b91c1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; background:var(--bg); color:var(--ink); }
+  header { max-width:880px; margin:0 auto; padding:28px 16px 8px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .lead { color:var(--sub); font-size:13px; margin:0 0 16px; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .controls input[type=search] { flex:1 1 220px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; background:#fff; }
+  .controls button.add { padding:10px 16px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px; }
+  .chip { padding:5px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:13px; cursor:pointer; }
+  .chip.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  main { max-width:880px; margin:0 auto; padding:0 16px 40px; display:grid; gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .card h2 { font-size:16px; margin:0 0 2px; line-height:1.5; }
+  .cat { display:inline-block; font-size:11px; color:var(--sub); border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-bottom:8px; }
+  .prices { display:flex; gap:24px; flex-wrap:wrap; margin:8px 0; }
+  .prices .lbl { font-size:11px; color:var(--sub); }
+  .prices .val { font-size:20px; font-weight:700; }
+  .prices .meta { font-size:12px; color:var(--sub); }
+  .diff.up { color:var(--bad); } .diff.down { color:var(--good); }
+  .memo { font-size:12px; color:var(--sub); margin:4px 0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .row a, .row button { font-size:13px; padding:7px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); text-decoration:none; cursor:pointer; }
+  .row a { background:#eef4ff; border-color:#c7dbff; }
+  .history { margin-top:12px; border-top:1px dashed var(--line); padding-top:10px; display:none; }
+  .history.open { display:block; }
+  .history table { width:100%; border-collapse:collapse; font-size:13px; }
+  .history td, .history th { padding:4px 6px; text-align:left; border-bottom:1px solid var(--line); }
+  .bars { display:flex; align-items:flex-end; gap:3px; height:48px; margin:8px 0; }
+  .bars div { flex:1; background:#93c5fd; border-radius:3px 3px 0 0; min-height:3px; }
+  dialog { border:1px solid var(--line); border-radius:14px; padding:20px; width:min(480px,92vw); }
+  dialog label { display:block; font-size:12px; color:var(--sub); margin:10px 0 4px; }
+  dialog input { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  dialog .row { justify-content:flex-end; }
+  .note { max-width:880px; margin:0 auto; padding:0 16px 32px; color:var(--sub); font-size:12px; line-height:1.7; }
+  .empty { text-align:center; color:var(--sub); padding:32px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>いつも買うものリスト</h1>
+  <p class="lead">いつも買うものの最安値・直近価格・価格履歴を記録するリストです。</p>
+  <div class="controls">
+    <input type="search" id="q" placeholder="商品名で検索">
+    <button class="add" id="addBtn">＋ 商品を追加</button>
+  </div>
+  <div class="chips" id="chips"></div>
+</header>
+<main id="list"></main>
+<p class="note">※ このページの元データは data.json（GitHubで管理）です。「商品を追加」「価格を追加」などの編集は、このブラウザの localStorage にだけ保存され、他の端末や他の人には反映されません。正式な記録は Muse の「いつも買うものリスト」で管理しています。</p>
+
+<dialog id="itemDlg">
+  <form method="dialog" id="itemForm">
+    <h3 style="margin:0">商品を追加（ブラウザ保存）</h3>
+    <label>商品名</label><input name="name" required>
+    <label>カテゴリ</label><input name="category" placeholder="例: 日用品">
+    <label>商品リンク（任意）</label><input name="url" placeholder="https://...">
+    <label>価格（円）</label><input name="price" type="number" min="0" required>
+    <label>買った店</label><input name="store" placeholder="例: Amazon">
+    <label>日付</label><input name="date" type="date" required>
+    <div class="row"><button value="cancel" formnovalidate>キャンセル</button><button id="itemSave" value="ok" style="background:var(--accent);color:#fff;border-color:var(--accent)">保存</button></div>
+  </form>
+</dialog>
+
+<dialog id="priceDlg">
+  <form method="dialog" id="priceForm">
+    <h3 style="margin:0">価格を追加（ブラウザ保存）</h3>
+    <input type="hidden" name="id">
+    <label>価格（円）</label><input name="price" type="number" min="0" required>
+    <label>買った店</label><input name="store" placeholder="例: Amazon">
+    <label>日付</label><input name="date" type="date" required>
+    <label>メモ（任意）</label><input name="memo">
+    <div class="row"><button value="cancel" formnovalidate>キャンセル</button><button id="priceSave" value="ok" style="background:var(--accent);color:#fff;border-color:var(--accent)">保存</button></div>
+  </form>
+</dialog>
+
+<script>
+const LS_KEY = "itsumo-list-local-v1";
+let baseItems = [];
+let local = loadLocal();
+let filterCat = "すべて";
+let query = "";
+
+function loadLocal() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { added: [], extraRecords: {}, deletedIds: [] }; }
+  catch { return { added: [], extraRecords: {}, deletedIds: [] }; }
+}
+function saveLocal() { localStorage.setItem(LS_KEY, JSON.stringify(local)); }
+
+function items() {
+  const merged = baseItems.filter(i => !local.deletedIds.includes(i.id)).map(i => ({
+    ...i,
+    records: [...i.records, ...(local.extraRecords[i.id] || [])].sort((a, b) => a.date < b.date ? -1 : 1)
+  }));
+  return [...merged, ...local.added];
+}
+function lowest(it) { return it.records.reduce((m, r) => (!m || r.price < m.price) ? r : m, null); }
+function latest(it) { return it.records[it.records.length - 1] || null; }
+function yen(n) { return "¥" + n.toLocaleString("ja-JP"); }
+function esc(s) { return (s ?? "").toString().replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function render() {
+  const all = items();
+  const cats = ["すべて", ...new Set(all.map(i => i.category || "その他"))];
+  document.getElementById("chips").innerHTML = cats.map(c =>
+    `<button class="chip ${c === filterCat ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
+  document.querySelectorAll(".chip").forEach(b => b.onclick = () => { filterCat = b.dataset.cat; render(); });
+
+  const shown = all.filter(i =>
+    (filterCat === "すべて" || (i.category || "その他") === filterCat) &&
+    (!query || i.name.includes(query)));
+  const el = document.getElementById("list");
+  if (!shown.length) { el.innerHTML = '<p class="empty">該当する商品がありません。</p>'; return; }
+  el.innerHTML = shown.map(it => {
+    const lo = lowest(it), la = latest(it);
+    let diff = "";
+    if (lo && la && lo !== la) {
+      const d = la.price - lo.price;
+      diff = d > 0 ? `<span class="diff up">最安値より +${yen(d).slice(1)}円</span>`
+                   : `<span class="diff down">最安値を更新</span>`;
+    }
+    const max = Math.max(...it.records.map(r => r.price));
+    const bars = it.records.map(r => `<div style="height:${Math.max(6, Math.round(r.price / max * 100))}%" title="${r.date} ${yen(r.price)}"></div>`).join("");
+    const rows = [...it.records].reverse().map(r =>
+      `<tr><td>${esc(r.date)}</td><td>${yen(r.price)}</td><td>${esc(r.store || "")}</td><td>${esc(r.memo || "")}</td></tr>`).join("");
+    return `<article class="card">
+      <span class="cat">${esc(it.category || "その他")}</span>
+      <h2>${esc(it.name)}</h2>
+      ${it.memo ? `<p class="memo">${esc(it.memo)}</p>` : ""}
+      <div class="prices">
+        <div><div class="lbl">最安値</div><div class="val">${lo ? yen(lo.price) : "—"}</div><div class="meta">${lo ? esc(lo.date) + " / " + esc(lo.store || "") : ""}</div></div>
+        <div><div class="lbl">直近価格</div><div class="val">${la ? yen(la.price) : "—"}</div><div class="meta">${la ? esc(la.date) + " / " + esc(la.store || "") : ""}</div></div>
+        <div><div class="lbl">&nbsp;</div><div class="meta">${diff}</div><div class="meta">記録 ${it.records.length} 件</div></div>
+      </div>
+      <div class="row">
+        ${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">商品ページ</a>` : ""}
+        <button data-act="hist" data-id="${it.id}">価格履歴</button>
+        <button data-act="price" data-id="${it.id}">価格を追加</button>
+        <button data-act="del" data-id="${it.id}">削除</button>
+      </div>
+      <div class="history" id="hist-${it.id}">
+        <div class="bars">${bars}</div>
+        <table><tr><th>日付</th><th>価格</th><th>店</th><th>メモ</th></tr>${rows}</table>
+      </div>
+    </article>`;
+  }).join("");
+  el.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => {
+    const id = isNaN(+b.dataset.id) ? b.dataset.id : +b.dataset.id;
+    const it = items().find(x => x.id === id);
+    if (b.dataset.act === "hist") document.getElementById("hist-" + id).classList.toggle("open");
+    if (b.dataset.act === "price") {
+      const f = document.getElementById("priceForm");
+      f.id.value = id; f.date.value = new Date().toISOString().slice(0, 10);
+      document.getElementById("priceDlg").showModal();
+    }
+    if (b.dataset.act === "del" && confirm("「" + it.name + "」をこのブラウザの表示から削除しますか？")) {
+      if (typeof id === "number") local.deletedIds.push(id);
+      local.added = local.added.filter(x => x.id !== id);
+      saveLocal(); render();
+    }
+  });
+}
+
+document.getElementById("q").oninput = e => { query = e.target.value.trim(); render(); };
+document.getElementById("addBtn").onclick = () => {
+  const f = document.getElementById("itemForm");
+  f.reset(); f.date.value = new Date().toISOString().slice(0, 10);
+  document.getElementById("itemDlg").showModal();
+};
+document.getElementById("itemSave").onclick = e => {
+  const f = new FormData(document.getElementById("itemForm"));
+  if (!f.get("name") || !f.get("price")) return;
+  e.preventDefault();
+  local.added.push({
+    id: "local-" + Date.now(),
+    name: f.get("name"), category: f.get("category") || "その他", url: f.get("url") || null, memo: null,
+    records: [{ date: f.get("date"), price: +f.get("price"), store: f.get("store") || "", memo: null }]
+  });
+  saveLocal(); document.getElementById("itemDlg").close(); render();
+};
+document.getElementById("priceSave").onclick = e => {
+  const f = new FormData(document.getElementById("priceForm"));
+  if (!f.get("price")) return;
+  e.preventDefault();
+  const raw = f.get("id");
+  const id = isNaN(+raw) ? raw : +raw;
+  const rec = { date: f.get("date"), price: +f.get("price"), store: f.get("store") || "", memo: f.get("memo") || null };
+  const addedItem = local.added.find(x => x.id === id);
+  if (addedItem) addedItem.records.push(rec);
+  else { (local.extraRecords[id] = local.extraRecords[id] || []).push(rec); }
+  saveLocal(); document.getElementById("priceDlg").close(); render();
+};
+
+fetch("data.json").then(r => r.json()).then(d => { baseItems = d.items || []; render(); })
+  .catch(() => { document.getElementById("list").innerHTML = '<p class="empty">data.json を読み込めませんでした。</p>'; });
+</script>
+</body>
+</html>
